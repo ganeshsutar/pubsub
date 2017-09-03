@@ -14,6 +14,7 @@ public class PropertyFilter implements Criteria {
 	}
 
 	public boolean eval(JSONObject message) {
+		if(!message.has(name)) return false;
 		Object messageValue = message.get(name);
 		return value.equals(messageValue);
 	}

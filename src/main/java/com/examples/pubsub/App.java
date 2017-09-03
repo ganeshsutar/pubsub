@@ -5,6 +5,7 @@ import java.util.Map;
 
 import org.json.JSONObject;
 
+import com.examples.pubsub.criteria.PropertyFilter;
 import com.examples.pubsub.interfaces.Consumer;
 import com.examples.pubsub.interfaces.Criteria;
 import com.examples.pubsub.interfaces.MessageChannel;
@@ -17,17 +18,13 @@ public class App
 {
     public static void main( String[] args ) throws Exception
     {
-    	MessageChannel channel = new InMemoryMessageChannel(32);
+    	MessageChannel channel = new InMemoryMessageChannel(32, 2);
     	Consumer consumer = new Consumer() {
 			public void consume(JSONObject object) {
 				System.out.println(object);
 			}
 		};
-		Criteria trueCriteria = new Criteria() {
-			public boolean eval(JSONObject message) {
-				return true;
-			}
-		};
+		Criteria trueCriteria = new PropertyFilter("name-10", "value-10");
 		channel.subscribe(trueCriteria, consumer);
 		
 		try {
