@@ -15,7 +15,7 @@ import com.examples.pubsub.interfaces.impl.InMemoryMessageChannel;
  */
 public class App 
 {
-    public static void main( String[] args )
+    public static void main( String[] args ) throws Exception
     {
     	MessageChannel channel = new InMemoryMessageChannel(32);
     	Consumer consumer = new Consumer() {
@@ -30,11 +30,15 @@ public class App
 		};
 		channel.subscribe(trueCriteria, consumer);
 		
-		for(int i=0 ; i<1000 ; ++i) {
-			Map<String, String> values = new HashMap<String, String>();
-			values.put("name-"+i, "value-"+i);
-			JSONObject message = new JSONObject(values);
-			channel.publish(message);
+		try {
+			for(int i=0 ; i<1000 ; ++i) {
+				Map<String, String> values = new HashMap<String, String>();
+				values.put("name-"+i, "value-"+i);
+				JSONObject message = new JSONObject(values);
+				channel.publish(message);
+			}
+		} finally {
+			channel.close();
 		}
     }
 }

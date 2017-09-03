@@ -1,10 +1,7 @@
 package com.examples.pubsub.interfaces.impl;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
 import java.util.Map;
-import java.util.Queue;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.json.JSONObject;
@@ -13,44 +10,69 @@ import com.examples.pubsub.interfaces.Consumer;
 import com.examples.pubsub.interfaces.Criteria;
 import com.examples.pubsub.interfaces.MessageChannel;
 
-public class InMemoryMessageChannel implements MessageChannel {
-	private Queue<JSONObject> queue;
-	private Map<Criteria, List<Consumer>> consumers;
+public class InMemoryMessageChannel implements MessageChannel, Runnable {
+	private BlockingQueue<JSONObject> queue;
+	private Map<Criteria, Consumer> consumers;
+	private volatile boolean keepRunning = true;
+	private Thread consumerThread = null;
 	
 	public InMemoryMessageChannel(int capacity) {
-		queue = new BoundedQueue<JSONObject>(capacity);
-		consumers = new ConcurrentHashMap<Criteria, List<Consumer>>();
-	}
-
-	public void publish(JSONObject message) {
-		queue.add(message);
-		fireConsumers(message);
-	}
-
-	private void fireConsumers(JSONObject message) {
-		//TODO: Run this on new thread so that queue can hold some messages
-		try {
-			for(Map.Entry<Criteria, List<Consumer>> entry : consumers.entrySet()){
-				if( entry.getKey().eval(message) ) {
-					handleMessage(message, entry.getValue());
-				}
-			}
-		} finally {
-			queue.remove(message);
-		}
+		this.queue = new VariableLinkedBlockingQueue<JSONObject>(capacity);
+		this.consumers = new ConcurrentHashMap<Criteria, Consumer>();
+		this.consumerThread = new Thread(this);
+		this.consumerThread.start();
 	}
 	
-	//TODO: message handling should be done in another way
-	private void handleMessage(JSONObject message, List<Consumer> consumers) {
-		for(Consumer consumer: consumers) {
-			consumer.consume(message);
+	public InMemoryMessageChannel(BlockingQueue<JSONObject> queue) {
+		this.queue = queue;
+		this.consumers = new ConcurrentHashMap<Criteria, Consumer>();
+		this.consumerThread = new Thread(this);
+		this.consumerThread.start();
+	}
+	
+	@Override
+	protected void finalize() throws Throwable {
+		super.finalize();
+		keepRunning = false;
+	}
+	
+	public BlockingQueue<JSONObject> getQueue() {
+		return this.queue;
+	}
+	
+	public void publish(JSONObject message) throws Exception {
+		queue.put(message);
+	}
+
+	public void subscribe(Criteria criteria, Consumer consumer) {
+		consumers.put(criteria, consumer);
+	}
+	
+	public boolean isFull() {
+		return queue.remainingCapacity() == 0;
+	}
+
+	public void run() {
+		try {
+			while(keepRunning) {
+				JSONObject message = queue.take();
+				for(Map.Entry<Criteria, Consumer> entry : consumers.entrySet()) {
+					if(entry.getKey().eval(message)) {
+						try {
+							entry.getValue().consume(message);
+						} catch (Exception e) {
+							/* Ignore for now */
+						}
+					}
+				}
+			}
+		} catch (InterruptedException e) {
+			// Exit gracefully
+			Thread.currentThread().interrupt();
 		}
 	}
 
-	public synchronized void subscribe(Criteria criteria, Consumer consumer) {
-		if(!consumers.containsKey(criteria)){
-			consumers.put(criteria, Collections.synchronizedList(new ArrayList<Consumer>()));
-		}
-		consumers.get(criteria).add(consumer);
+	public void close() {
+		keepRunning = false;
 	}
 }
